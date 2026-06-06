@@ -1,0 +1,15 @@
+[package]
+name = "rustgen"
+version = "0.1.0"
+edition = "2021"
+description = "rust-stemmers oracle: stems stdin words for go-stemmers conformance goldens and fuzzing"
+publish = false
+
+[[bin]]
+name = "rustgen"
+path = "src/main.rs"
+
+[dependencies]
+# Pinned to the exact version go-stemmers ports, so the goldens it emits are the
+# parity contract. Bumping this version means regenerating every golden.
+rust-stemmers = "=1.2.0"

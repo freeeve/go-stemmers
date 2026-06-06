@@ -1,0 +1,11 @@
+# Go test binaries and profiles
+*.test
+*.prof
+*.out
+
+# Rust oracle build artifacts (rustgen generates committed goldens / fuzz oracle)
+/rustgen/target/
+
+# Derived OpenAlex benchmark corpora — streamed from the public snapshot on
+# demand (see cmd/oacorpus); never vendored into the repo.
+/testdata/*.corpus

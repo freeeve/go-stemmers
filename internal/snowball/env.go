@@ -172,10 +172,11 @@ func (e *Env) Insert(bra, ket int, s string) {
 }
 
 // NextChar advances the cursor to the next character boundary. Mirrors
-// `next_char`.
+// `next_char`. The boundary scan is inlined (skip UTF-8 continuation bytes)
+// rather than calling isCharBoundary per byte — a hot path for ASCII text.
 func (e *Env) NextChar() {
 	e.Cursor++
-	for !e.isCharBoundary(e.Cursor) {
+	for e.Cursor < len(e.Current) && e.Current[e.Cursor]&0xC0 == 0x80 {
 		e.Cursor++
 	}
 }
@@ -184,7 +185,7 @@ func (e *Env) NextChar() {
 // `previous_char`.
 func (e *Env) PreviousChar() {
 	e.Cursor--
-	for !e.isCharBoundary(e.Cursor) {
+	for e.Cursor > 0 && e.Current[e.Cursor]&0xC0 == 0x80 {
 		e.Cursor--
 	}
 }
@@ -218,10 +219,15 @@ func (e *Env) ByteIndexForHop(delta int) int {
 }
 
 // runeAtCursor decodes the rune at the cursor, mirroring
-// `self.current[self.cursor..].chars().next()`.
+// `self.current[self.cursor..].chars().next()`. ASCII bytes are returned
+// directly, skipping DecodeRune for the common case.
 func (e *Env) runeAtCursor() (rune, bool) {
 	if e.Cursor >= len(e.Current) {
 		return 0, false
+	}
+	b := e.Current[e.Cursor]
+	if b < utf8.RuneSelf {
+		return rune(b), true
 	}
 	r, _ := utf8.DecodeRune(e.Current[e.Cursor:])
 	return r, true

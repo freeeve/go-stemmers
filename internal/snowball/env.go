@@ -26,23 +26,41 @@ type Env struct {
 	// Bra and Ket bracket the slice a replace/delete operates on.
 	Bra int
 	Ket int
+
+	// orig is the unmodified input; dirty records whether any slice op has
+	// mutated Current. While !dirty, GetCurrent can return orig without copying,
+	// and a pooled Env reuses the Current buffer across calls.
+	orig  string
+	dirty bool
 }
 
 // NewEnv creates an Env over value, mirroring `SnowballEnv::create`.
 func NewEnv(value string) *Env {
-	b := []byte(value)
-	return &Env{
-		Current:       b,
-		Cursor:        0,
-		Limit:         len(b),
-		LimitBackward: 0,
-		Bra:           0,
-		Ket:           len(b),
-	}
+	e := &Env{}
+	e.Reset(value)
+	return e
 }
 
-// GetCurrent returns the working string, mirroring `get_current`.
+// Reset re-initialises the Env over value, reusing the Current buffer's backing
+// array when capacity allows. It lets a Stemmer pool and reuse Envs across calls
+// instead of allocating one per Stem.
+func (e *Env) Reset(value string) {
+	e.Current = append(e.Current[:0], value...)
+	e.orig = value
+	e.dirty = false
+	e.Cursor = 0
+	e.Limit = len(e.Current)
+	e.LimitBackward = 0
+	e.Bra = 0
+	e.Ket = len(e.Current)
+}
+
+// GetCurrent returns the working string, mirroring `get_current`. When the word
+// was never mutated it returns the original input directly, avoiding a copy.
 func (e *Env) GetCurrent() string {
+	if !e.dirty {
+		return e.orig
+	}
 	return string(e.Current)
 }
 
@@ -70,17 +88,28 @@ func (e *Env) isCharBoundary(i int) bool {
 // `replace_s`. Returns the length adjustment (len(s) - (ket-bra)).
 func (e *Env) replaceS(bra, ket int, s string) int {
 	adjustment := len(s) - (ket - bra)
-	result := make([]byte, 0, len(e.Current)+adjustment)
-	result = append(result, e.Current[:bra]...)
-	result = append(result, s...)
-	result = append(result, e.Current[ket:]...)
+	if adjustment <= 0 {
+		// Shrink or equal length: overwrite s and shift the tail left in place,
+		// then truncate — the common case (slice_del / shorter slice_from), so no
+		// new buffer is allocated. copy handles the overlapping move.
+		n := copy(e.Current[bra:], s)
+		copy(e.Current[bra+n:], e.Current[ket:])
+		e.Current = e.Current[:len(e.Current)+adjustment]
+	} else {
+		// Growth (insert / <+): the tail must move right, so build a new buffer.
+		result := make([]byte, 0, len(e.Current)+adjustment)
+		result = append(result, e.Current[:bra]...)
+		result = append(result, s...)
+		result = append(result, e.Current[ket:]...)
+		e.Current = result
+	}
+	e.dirty = true
 	e.Limit += adjustment
 	if e.Cursor >= ket {
 		e.Cursor += adjustment
 	} else if e.Cursor > bra {
 		e.Cursor = bra
 	}
-	e.Current = result
 	return adjustment
 }
 

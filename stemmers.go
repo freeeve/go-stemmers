@@ -11,6 +11,8 @@
 package stemmers
 
 import (
+	"sync"
+
 	"github.com/freeeve/go-stemmers/internal/arabic"
 	"github.com/freeeve/go-stemmers/internal/danish"
 	"github.com/freeeve/go-stemmers/internal/dutch"
@@ -80,9 +82,11 @@ var algorithms = map[Algorithm]func(*snowball.Env) bool{
 }
 
 // Stemmer stems single words with one configured algorithm. It is safe for
-// concurrent use: each Stem call allocates its own working state.
+// concurrent use: a pool hands each call its own working state, so a Stemmer can
+// be shared across goroutines.
 type Stemmer struct {
 	stem func(*snowball.Env) bool
+	pool sync.Pool
 }
 
 // New returns a Stemmer for the given algorithm. It panics if a is not a known
@@ -92,13 +96,20 @@ func New(a Algorithm) *Stemmer {
 	if !ok {
 		panic("stemmers: unknown algorithm")
 	}
-	return &Stemmer{stem: stem}
+	s := &Stemmer{stem: stem}
+	s.pool.New = func() any { return new(snowball.Env) }
+	return s
 }
 
 // Stem returns the stem of word. The input is expected to be already lowercased
 // (Snowball's contract); a word the algorithm leaves unchanged is returned as-is.
+// The working Env is taken from a pool and returned after use; the result string
+// is independent of it (a fresh copy when the word changed, the input otherwise).
 func (s *Stemmer) Stem(word string) string {
-	env := snowball.NewEnv(word)
-	s.stem(env)
-	return env.GetCurrent()
+	e := s.pool.Get().(*snowball.Env)
+	e.Reset(word)
+	s.stem(e)
+	out := e.GetCurrent()
+	s.pool.Put(e)
+	return out
 }

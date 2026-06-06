@@ -17,6 +17,19 @@ var allAlgorithms = []Algorithm{
 	Turkish,
 }
 
+// algoNames is the Snowball language name for each algorithm, matching the
+// rustgen oracle's CLI names and used to label subtests/benchmarks.
+var algoNames = map[Algorithm]string{
+	Arabic: "arabic", Danish: "danish", Dutch: "dutch", English: "english",
+	Finnish: "finnish", French: "french", German: "german", Greek: "greek",
+	Hungarian: "hungarian", Italian: "italian", Norwegian: "norwegian",
+	Portuguese: "portuguese", Romanian: "romanian", Russian: "russian",
+	Spanish: "spanish", Swedish: "swedish", Tamil: "tamil", Turkish: "turkish",
+}
+
+// algoName returns the Snowball language name for a.
+func algoName(a Algorithm) string { return algoNames[a] }
+
 // FuzzStem checks robustness: no algorithm may panic on arbitrary input, and a
 // stem must remain valid UTF-8. (Length is not invariant — Turkish, for one,
 // appends vowels — so byte-for-byte output is verified by TestVectors and the
@@ -26,7 +39,7 @@ func FuzzStem(f *testing.F) {
 	for _, w := range []string{"", "a", "running", "fruitlessly", "naïveté", "Ω", "بالكتاب", "größer"} {
 		f.Add(w)
 	}
-	// Seed from the English vocabulary so the corpus reflects real words too.
+	// Seed from the committed corpus so the fuzz reflects real words too.
 	for _, w := range firstN(readSeed(f), 500) {
 		f.Add(w)
 	}
@@ -50,46 +63,39 @@ func FuzzStem(f *testing.F) {
 }
 
 // TestRustgenParity is the cross-language differential check against the live
-// rust-stemmers oracle over a large realistic corpus. It runs only when both the
-// rustgen binary (build it with `cargo build --release` in rustgen/) and a
-// streamed OpenAlex corpus (go run ./cmd/oacorpus) are present, so CI stays
-// hermetic while a developer can prove parity beyond the committed vectors.
+// rust-stemmers oracle: it stems the corpus with both Go and rustgen and asserts
+// they agree for every algorithm. It runs only when the rustgen binary is built
+// (`cargo build --release` in rustgen/), so the pure-Go test stays hermetic; CI's
+// oracle job builds rustgen and runs it. It uses a larger streamed bench.corpus
+// when present, else the committed corpus.
 func TestRustgenParity(t *testing.T) {
 	bin := filepath.Join("rustgen", "target", "release", "rustgen")
 	if _, err := os.Stat(bin); err != nil {
 		t.Skip("rustgen not built (cargo build --release in rustgen/) — skipping live oracle parity")
 	}
-	corpus := filepath.Join("testdata", "openalex.corpus")
-	words, err := readLinesFile(corpus)
-	if err != nil {
-		t.Skipf("no OpenAlex corpus at %s (go run ./cmd/oacorpus) — skipping", corpus)
-	}
-	if len(words) == 0 {
-		t.Skip("empty corpus")
+	words, err := readLinesFile(filepath.Join("testdata", "bench.corpus"))
+	if err != nil || len(words) == 0 {
+		words, err = readLinesFile(filepath.Join("testdata", "corpus.txt"))
+		if err != nil {
+			t.Fatalf("read corpus: %v", err)
+		}
 	}
 	abs, err := filepath.Abs(bin)
 	if err != nil {
 		t.Fatalf("abs: %v", err)
 	}
-	names := map[Algorithm]string{
-		Arabic: "arabic", Danish: "danish", Dutch: "dutch", English: "english",
-		Finnish: "finnish", French: "french", German: "german", Greek: "greek",
-		Hungarian: "hungarian", Italian: "italian", Norwegian: "norwegian",
-		Portuguese: "portuguese", Romanian: "romanian", Russian: "russian",
-		Spanish: "spanish", Swedish: "swedish", Tamil: "tamil", Turkish: "turkish",
-	}
 	input := strings.Join(words, "\n") + "\n"
 	for _, a := range allAlgorithms {
-		t.Run(names[a], func(t *testing.T) {
-			cmd := exec.Command(abs, names[a])
+		t.Run(algoName(a), func(t *testing.T) {
+			cmd := exec.Command(abs, algoName(a))
 			cmd.Stdin = strings.NewReader(input)
 			out, err := cmd.Output()
 			if err != nil {
-				t.Fatalf("rustgen %s: %v", names[a], err)
+				t.Fatalf("rustgen %s: %v", algoName(a), err)
 			}
 			want := strings.Split(strings.TrimRight(string(out), "\n"), "\n")
 			if len(want) != len(words) {
-				t.Fatalf("%s: rustgen returned %d lines for %d words", names[a], len(want), len(words))
+				t.Fatalf("%s: rustgen returned %d lines for %d words", algoName(a), len(want), len(words))
 			}
 			s := New(a)
 			mismatch := 0
@@ -97,21 +103,21 @@ func TestRustgenParity(t *testing.T) {
 				if got := s.Stem(w); got != want[i] {
 					mismatch++
 					if mismatch <= 10 {
-						t.Errorf("%s Stem(%q) = %q, rustgen = %q", names[a], w, got, want[i])
+						t.Errorf("%s Stem(%q) = %q, rustgen = %q", algoName(a), w, got, want[i])
 					}
 				}
 			}
 			if mismatch > 0 {
-				t.Fatalf("%s: %d/%d stems diverged from rustgen", names[a], mismatch, len(words))
+				t.Fatalf("%s: %d/%d stems diverged from rustgen", algoName(a), mismatch, len(words))
 			}
 		})
 	}
 }
 
-// readSeed loads the English vocabulary for fuzz seeding, tolerating its absence.
+// readSeed loads the committed corpus for fuzz seeding, tolerating its absence.
 func readSeed(f *testing.F) []string {
 	f.Helper()
-	w, err := readLinesFile(filepath.Join("testdata", "voc_en.txt"))
+	w, err := readLinesFile(filepath.Join("testdata", "corpus.txt"))
 	if err != nil {
 		return nil
 	}

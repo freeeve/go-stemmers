@@ -25,9 +25,10 @@ jobs:
       - name: Test (vector conformance + fuzz seed + known cases)
         run: go test -race ./...
 
-  # Builds the rust-stemmers oracle and proves it reproduces the committed
-  # English golden — i.e. that the pinned version still matches the vendored
-  # vectors the Go port is tested against.
+  # Builds the rust-stemmers oracle and proves it reproduces every committed
+  # golden over the corpus — i.e. that the pinned version still matches the
+  # expected outputs the Go port (the `go` job) is tested against. Together the
+  # two jobs prove Go == committed goldens == rust-stemmers 1.2.0.
   oracle:
     runs-on: ubuntu-latest
     steps:
@@ -36,7 +37,12 @@ jobs:
       - name: Build rustgen
         working-directory: rustgen
         run: cargo build --release
-      - name: Oracle reproduces committed English golden
+      - name: Oracle reproduces committed goldens
         run: |
-          ./rustgen/target/release/rustgen english < testdata/voc_en.txt > /tmp/res_en.got
-          diff -u testdata/res_en.txt /tmp/res_en.got
+          for pair in ar:arabic da:danish nl:dutch en:english fi:finnish \
+                      fr:french ger:german el:greek hu:hungarian it:italian \
+                      no:norwegian pt:portuguese ro:romanian ru:russian \
+                      es:spanish sv:swedish ta:tamil tr:turkish; do
+            ./rustgen/target/release/rustgen "${pair#*:}" < testdata/corpus.txt > /tmp/res.got
+            diff -u "testdata/res_${pair%%:*}.txt" /tmp/res.got
+          done

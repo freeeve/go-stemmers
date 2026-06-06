@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  go:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+      - name: Check formatting
+        run: |
+          if [ -n "$(gofmt -s -l .)" ]; then
+            echo "Code is not formatted. Run 'gofmt -s -w .'"
+            gofmt -s -d .
+            exit 1
+          fi
+      - name: Vet
+        run: go vet ./...
+      - name: Test (vector conformance + fuzz seed + known cases)
+        run: go test -race ./...
+
+  # Builds the rust-stemmers oracle and proves it reproduces the committed
+  # English golden — i.e. that the pinned version still matches the vendored
+  # vectors the Go port is tested against.
+  oracle:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build rustgen
+        working-directory: rustgen
+        run: cargo build --release
+      - name: Oracle reproduces committed English golden
+        run: |
+          ./rustgen/target/release/rustgen english < testdata/voc_en.txt > /tmp/res_en.got
+          diff -u testdata/res_en.txt /tmp/res_en.got

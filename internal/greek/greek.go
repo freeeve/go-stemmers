@@ -2948,7 +2948,12 @@ func step7(env *snowball.Env, ctx *context) bool {
 // `stem` entry point: it lower-cases the word, then applies the noun/verb suffix
 // steps backwards. It always returns true; the result is the mutated env.
 func Stem(env *snowball.Env) bool {
-	ctx := &context{}
+	ctx, _ := env.Scratch.(*context)
+	if ctx == nil {
+		ctx = &context{}
+		env.Scratch = ctx
+	}
+	*ctx = context{}
 	env.LimitBackward = env.Cursor
 	env.Cursor = env.Limit
 	v1 := env.Limit - env.Cursor

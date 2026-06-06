@@ -896,7 +896,12 @@ replab0:
 // generated `stem` entry point. It always returns true; the result is the
 // mutated env.
 func Stem(env *snowball.Env) bool {
-	ctx := &context{}
+	ctx, _ := env.Scratch.(*context)
+	if ctx == nil {
+		ctx = &context{}
+		env.Scratch = ctx
+	}
+	*ctx = context{}
 lab0:
 	for {
 		v1 := env.Cursor

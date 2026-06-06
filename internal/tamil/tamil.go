@@ -2058,7 +2058,12 @@ lab58:
 // Stem runs the Snowball tamil algorithm over env, mirroring the generated
 // `stem` entry point. It returns true unless the word is too short.
 func Stem(env *snowball.Env) bool {
-	ctx := &context{}
+	ctx, _ := env.Scratch.(*context)
+	if ctx == nil {
+		ctx = &context{}
+		env.Scratch = ctx
+	}
+	*ctx = context{}
 	ctx.bFoundVetrumaiUrupu = false
 	v1 := env.Cursor
 lab0:

@@ -2392,7 +2392,12 @@ lab2:
 // `stem` entry point. It returns false when the word is too short or when a
 // required stage fails, matching rust-stemmers' behaviour.
 func Stem(env *snowball.Env) bool {
-	ctx := &context{}
+	ctx, _ := env.Scratch.(*context)
+	if ctx == nil {
+		ctx = &context{}
+		env.Scratch = ctx
+	}
+	*ctx = context{}
 	if !moreThanOneSyllableWord(env, ctx) {
 		return false
 	}

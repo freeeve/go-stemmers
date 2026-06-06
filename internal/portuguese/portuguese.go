@@ -783,7 +783,12 @@ func residualForm(env *snowball.Env, ctx *context) bool {
 // Stem runs the Snowball portuguese algorithm over env, mirroring the generated
 // `stem` entry point. It always returns true; the result is the mutated env.
 func Stem(env *snowball.Env) bool {
-	ctx := &context{}
+	ctx, _ := env.Scratch.(*context)
+	if ctx == nil {
+		ctx = &context{}
+		env.Scratch = ctx
+	}
+	*ctx = context{}
 	v1 := env.Cursor
 lab0:
 	for {

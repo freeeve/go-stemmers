@@ -32,6 +32,12 @@ type Env struct {
 	// and a pooled Env reuses the Current buffer across calls.
 	orig  string
 	dirty bool
+
+	// Scratch lets an algorithm cache its per-run context on the Env so a pooled
+	// Env reuses it across calls instead of allocating one per Stem. Reset
+	// deliberately leaves it intact; each algorithm zeroes its own context. Each
+	// Stemmer pools Envs for a single algorithm, so the stored type is stable.
+	Scratch any
 }
 
 // NewEnv creates an Env over value, mirroring `SnowballEnv::create`.
